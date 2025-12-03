@@ -3,18 +3,20 @@ package com.example.test_lab_week_12
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.RecyclerView
 import com.example.test_lab_week_12.model.Movie
 import com.google.android.material.snackbar.Snackbar
-import java.util.Calendar
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
-    // Inisialisasi adapter dengan Click Listener agar bisa pindah ke halaman detail
+    // PERBAIKAN: Menggunakan Interface agar cocok dengan MovieAdapter bawaan modul
     private val movieAdapter by lazy {
-        // Kita membuat objek anonymous yang mengimplementasikan interface MovieClickListener
         MovieAdapter(object : MovieAdapter.MovieClickListener {
             override fun onMovieClick(movie: Movie) {
                 openMovieDetails(movie)
@@ -29,11 +31,7 @@ class MainActivity : AppCompatActivity() {
         val recyclerView: RecyclerView = findViewById(R.id.movie_list)
         recyclerView.adapter = movieAdapter
 
-        // 1. Mengambil repository dari Application class
         val movieRepository = (application as MovieApplication).movieRepository
-
-        // 2. Inisialisasi ViewModel menggunakan Factory
-        // Kita butuh Factory karena MovieViewModel memiliki parameter constructor (movieRepository)
         val movieViewModel = ViewModelProvider(
             this, object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -42,31 +40,36 @@ class MainActivity : AppCompatActivity() {
             }
         )[MovieViewModel::class.java]
 
-        // 3. Mengamati data popularMovies
-        movieViewModel.popularMovies.observe(this) { popularMovies ->
-            // Ambil tahun saat ini (misal: 2023/2024)
-            val currentYear = Calendar.getInstance().get(Calendar.YEAR).toString()
-
-            movieAdapter.addMovies(
-                popularMovies
-                    .filter { movie ->
-                        // Filter: Hanya ambil film yang rilis tahun ini
-                        // releaseDate bisa null, jadi pakai safe call ?.
-                        movie.releaseDate?.startsWith(currentYear) == true
+        // --- KODE DARI MODUL STEP 4 ---
+        // fetch movies from the API
+        // lifecycleScope is a lifecycle-aware coroutine scope
+        lifecycleScope.launch {
+            // repeatOnLifecycle is a lifecycle-aware coroutine builder
+            // Lifecycle.State.STARTED means that the coroutine will run
+            // when the activity is started
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    // collect the list of movies from the StateFlow
+                    movieViewModel.popularMovies.collect { movies ->
+                        // add the list of movies to the adapter
+                        movieAdapter.addMovies(movies)
                     }
-                    .sortedByDescending { it.popularity } // Urutkan dari yang terpopuler
-            )
-        }
-
-        // 4. Mengamati pesan error
-        movieViewModel.error.observe(this) { error ->
-            if (error.isNotEmpty()) {
-                Snackbar.make(recyclerView, error, Snackbar.LENGTH_LONG).show()
+                }
+                launch {
+                    // collect the error message from the StateFlow
+                    movieViewModel.error.collect { error ->
+                        // if an error occurs, show a Snackbar with the error message
+                        if (error.isNotEmpty()) {
+                            Snackbar.make(
+                                recyclerView, error, Snackbar.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
             }
         }
     }
 
-    // Fungsi untuk intent ke DetailsActivity
     private fun openMovieDetails(movie: Movie) {
         val intent = Intent(this, DetailsActivity::class.java).apply {
             putExtra(DetailsActivity.EXTRA_TITLE, movie.title)
