@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
 
 class MovieViewModel(private val movieRepository: MovieRepository) : ViewModel() {
 
@@ -30,6 +31,10 @@ class MovieViewModel(private val movieRepository: MovieRepository) : ViewModel()
         // Dispatchers.IO means that this coroutine will run on a shared pool of threads
         viewModelScope.launch(Dispatchers.IO) {
             movieRepository.fetchMovies()
+                .map { movies ->
+                    // Di sini kita melakukan filter/sorting sebelum data masuk ke StateFlow
+                    movies.sortedByDescending { it.popularity }
+                }
                 .catch { exception ->
                     // catch is a terminal operator that catches exceptions from the Flow
                     _error.value = "An exception occurred: ${exception.message}"
